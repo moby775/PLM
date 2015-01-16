@@ -1,0 +1,121 @@
+---
+title: "Practical Machine Learning Project"
+output: html_document
+---
+
+##Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+
+##Data 
+
+
+The training data for this project are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har.
+
+The libraries requires are as follows.
+```{r, echo=FALSE}
+library(Hmisc)
+library(caret)
+library(randomForest)
+library(foreach)
+library(doParallel)
+set.seed(12345)
+```
+
+##Loading Training Data
+The pml-training.csv data is actually used to devise training and testing sets. 
+The pml-test.csv data is used to predict and answer the 20 questions based on the trained model.
+
+```{r}
+train_file   <- 'pml-train.csv'
+test_file <- 'pml-test.csv'
+train_url    <- 'http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv'
+test_url  <- 'http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv'
+
+download.file(train_url, train_file)
+download.file(test_url,test_file )
+```
+
+##Cleaning Data
+First all blank('""'), '#DIV/0' and 'NA' values are converted to 'NA'. 
+Any Columns containing 'NA' are removed from both downloaded data sets.
+```{r}
+train_df   <-read.csv(train_file, na.strings=c("NA","#DIV/0!", ""))
+test_df <-read.csv(test_file , na.strings=c("NA", "#DIV/0!", ""))
+train_df<-train_df[,colSums(is.na(train_df)) == 0]
+test_df <-test_df[,colSums(is.na(test_df)) == 0]
+```
+
+The data from first 7 columns user_name raw_timestamp_part_1 raw_timestamp_part_2 cvtd_timestamp new_window num_window 
+are not related to calculations and are removed form the downloaded data.
+```{r}
+train_df   <-train_df[,-c(1:7)]
+test_df <-test_df[,-c(1:7)]
+```
+
+##Split the training set into training and test
+```{r}
+inTraining_matrix<-createDataPartition(train_df$classe, p = 0.6, list = FALSE)
+train_data<- train_df[inTraining_matrix, ]
+test_data <- train_df[-inTraining_matrix, ]
+```
+
+##Use Random Forests
+The outcome variable is 'classe' All variables other variables that assist in determining classe are defined as 'variables'. 
+The outcome variable is 'fit'
+```{r}
+registerDoParallel()
+classe <- train_data$classe
+variables <- train_data[-ncol(train_data)]
+```
+In the case of forest size we usemodel 1000 trees. We have four cores so we split up the problem into four pieces. 
+This is accomplished by executing the randomForest function four times, with the ntree argument set to 250.
+```{r}
+rf <- foreach(ntree=rep(250, 4), .combine=randomForest::combine, .packages='randomForest') %dopar% {
+  randomForest(variables, classe, ntree=ntree) 
+}
+```
+
+Confusion Matrix for Training
+Predict and generate the Accuracy and confusion matrix for the training set (60% of the training data)
+```{r}
+train_predictions <- predict(rf, newdata=train_data)
+confusionMatrix(train_predictions,train_data$classe)
+```
+
+Confusion Matrix for Test set
+Predict and generate the Accuracy and confusion matrix for the training set (40% of the testing data) Did the data overfit the training data?
+```{r}
+test_predictions <- predict(rf, newdata=test_data)
+confusionMatrix(test_predictions,test_data$classe)
+```
+
+Method to write answers to separate .txt files
+```{r}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+```
+
+Predict the answers to the 20 questions.
+```{r}
+answers <- predict(rf, test_df)
+
+answers
+pml_write_files(answers)
+```
+
+
