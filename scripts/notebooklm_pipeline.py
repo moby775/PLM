@@ -5,7 +5,14 @@ import asyncio
 import json
 import sys
 import argparse
+from pathlib import Path
 from notebooklm import NotebookLMClient
+
+SUPPORTED_EXTENSIONS = {
+    ".pdf", ".txt", ".md", ".docx", ".doc",
+    ".pptx", ".ppt", ".xlsx", ".xls", ".csv",
+    ".html", ".htm",
+}
 
 
 async def get_client():
@@ -49,6 +56,46 @@ async def add_youtube_sources(
         "notebook_id": notebook_id,
         "sources": results,
         "total": len(urls),
+        "successful": successful,
+    }
+
+
+async def add_local_files(notebook_id: str, directory: str, recursive: bool = False) -> dict:
+    base = Path(directory)
+    if not base.exists():
+        return {"error": f"Path not found: {directory}"}
+
+    if base.is_file():
+        files = [base]
+    else:
+        pattern = "**/*" if recursive else "*"
+        files = [
+            f for f in base.glob(pattern)
+            if f.is_file() and f.suffix.lower() in SUPPORTED_EXTENSIONS
+        ]
+
+    if not files:
+        return {
+            "error": f"No supported files found in: {directory}",
+            "supported_types": sorted(SUPPORTED_EXTENSIONS),
+        }
+
+    results = []
+    async with NotebookLMClient.from_storage() as client:
+        for f in files:
+            try:
+                await client.sources.add_file(notebook_id, str(f))
+                results.append({"file": f.name, "status": "added"})
+                print(f"  Added: {f.name}", file=sys.stderr)
+            except Exception as e:
+                results.append({"file": f.name, "status": "error", "error": str(e)})
+                print(f"  Failed: {f.name} — {e}", file=sys.stderr)
+
+    successful = sum(1 for r in results if r["status"] == "added")
+    return {
+        "notebook_id": notebook_id,
+        "files": results,
+        "total": len(files),
         "successful": successful,
     }
 
@@ -132,6 +179,12 @@ def main():
     p.add_argument("urls", nargs="+", help="YouTube URLs to add")
     p.add_argument("--wait", action="store_true", help="Wait for each source to process")
 
+    # add-files
+    p = sub.add_parser("add-files", help="Add local files from a directory as sources")
+    p.add_argument("notebook_id", help="Notebook ID")
+    p.add_argument("directory", help="Directory path (or single file path)")
+    p.add_argument("--recursive", "-r", action="store_true", help="Include subdirectories")
+
     # ask
     p = sub.add_parser("ask", help="Ask NotebookLM a question")
     p.add_argument("notebook_id", help="Notebook ID")
@@ -172,6 +225,11 @@ def main():
         elif args.command == "add-sources":
             result = await add_youtube_sources(
                 args.notebook_id, args.urls, wait=args.wait
+            )
+
+        elif args.command == "add-files":
+            result = await add_local_files(
+                args.notebook_id, args.directory, recursive=args.recursive
             )
 
         elif args.command == "ask":
