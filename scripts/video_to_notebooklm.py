@@ -19,6 +19,22 @@ AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".ogg", ".wma", ".flac"}
 ALL_MEDIA = VIDEO_EXTENSIONS | AUDIO_EXTENSIONS
 
 
+FFMPEG_CANDIDATES = [
+    "ffmpeg",
+    r"C:\ffmpeg\bin\ffmpeg.exe",
+    r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
+    r"C:\ProgramData\chocolatey\bin\ffmpeg.exe",
+]
+
+
+def find_ffmpeg() -> str:
+    import shutil
+    for candidate in FFMPEG_CANDIDATES:
+        if shutil.which(candidate) or Path(candidate).exists():
+            return candidate
+    return None
+
+
 def ensure_whisper():
     try:
         import whisper
@@ -110,6 +126,24 @@ def main():
     output_dir = Path(args.transcripts_dir) if args.transcripts_dir else base / "transcripts"
     output_dir.mkdir(parents=True, exist_ok=True)
     print(f"\nTranscripts will be saved to: {output_dir}", file=sys.stderr)
+
+    ffmpeg_path = find_ffmpeg()
+    if not ffmpeg_path:
+        print(
+            "\nERROR: ffmpeg not found. Install it and ensure it is on your PATH.\n"
+            "  Option 1: winget install --id Gyan.FFmpeg -e\n"
+            "  Option 2: Download from https://www.gyan.dev/ffmpeg/builds/\n"
+            "            Extract to C:\\ffmpeg and re-run.\n"
+            "  If already extracted to C:\\ffmpeg, the script will find it automatically.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if ffmpeg_path != "ffmpeg":
+        import os
+        ffmpeg_dir = str(Path(ffmpeg_path).parent)
+        os.environ["PATH"] = ffmpeg_dir + os.pathsep + os.environ.get("PATH", "")
+        print(f"Using ffmpeg from: {ffmpeg_path}", file=sys.stderr)
 
     print(f"\nLoading Whisper model '{args.model}' (downloads on first use)...", file=sys.stderr)
     whisper = ensure_whisper()
