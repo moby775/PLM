@@ -9,8 +9,7 @@ from pathlib import Path
 from notebooklm import NotebookLMClient
 
 SUPPORTED_EXTENSIONS = {
-    ".pdf", ".txt", ".md", ".docx", ".doc",
-    ".pptx", ".ppt", ".xlsx", ".xls", ".csv",
+    ".pdf", ".txt", ".md", ".docx",
     ".html", ".htm",
 }
 
